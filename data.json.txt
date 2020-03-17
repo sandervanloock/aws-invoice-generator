@@ -1,0 +1,41 @@
+{
+  "issuerName":"META Legal & Finance",
+  "issuerAddress1":"154-164 The Embarcadero",
+  "issuerAddress2":"San Francisco, CA 94105",
+  "issuerTaxNumber":"23-55589899",
+  "prev1Date":"Dec 2014",
+  "prev1Amt":"$123.22",
+  "prev2Date":"Jan 2015",
+  "prev2Amt":"$117.30",
+  "name":"Mr Ronald Davis",
+  "company":"Abstractors and Design Co.",
+  "addr1":"611 Maine St,",
+  "addr2":"San Francisco, CA 94105",
+  "openingBal":"0.00",
+  "dueDate":"Feb 25, 2015",
+  "items":[{
+    "item":"Fixed Monthly Repayments",
+    "amt":"85.00"
+  },
+  {
+    "item":"Management Fee",
+    "amt":"27.00"
+  },
+  {
+    "item":"Account Service Fee",
+    "amt":"7.22"
+  }],
+  "totalAmt":"119.22",
+  "tax":"11.92",
+  "invoiceDate":"Feb 20, 2015",
+  "invoiceNo":"1123055",
+  "customerNo":"CN-655",
+  "overdueAmt":"0.00",
+  "debitDate":"Feb 25, 2015",
+  "billEnqPh":"133 33 33",
+  "toolboxURL":"http://www.metalegalfinance.com",
+  "billerCode":"R1233",
+  "billerRef":"01234012340123",
+  "payByPh":"133 33 44",
+  "phoneReference":"01234012340123"
+}
