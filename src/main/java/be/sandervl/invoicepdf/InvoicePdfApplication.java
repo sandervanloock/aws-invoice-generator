@@ -96,6 +96,7 @@ class AwsConfiguration {
 
 @Controller
 class InvoiceController {
+    public static final double TAX_PERCENTACE = 0.21;
     private final AwsInvoiceService awsInvoiceService;
     private final CurrencyExchange currencyExchange;
     private final PdfCreator pdfCreator;
@@ -131,7 +132,7 @@ class InvoiceController {
     }
 
     private void setInvoiceDataOnModel(ModelMap modelMap) {
-        Map<String, MetricValue> awsInvoice = getTotalAwsCostMetric();
+        Map<String, MetricValue> awsInvoice = getAwsCostsForCurrency("EUR");
         MetricValue totalInvoice = calculateTotalMetric(awsInvoice.values());
         modelMap.addAttribute("invoiceItems", awsInvoice);
         modelMap.addAttribute("invoiceTotal", totalInvoice);
@@ -158,14 +159,22 @@ class InvoiceController {
         });
     }
 
-    private Map<String, MetricValue> getTotalAwsCostMetric() {
+    private Map<String, MetricValue> getAwsCostsForCurrency(String currency) {
         Map<String, MetricValue> awsInvoiceEntries = awsInvoiceService.getInvoice();
+        addTaxMetricToEntries(awsInvoiceEntries);
         awsInvoiceEntries.values().forEach(awsInvoice -> {
-            Double convertedCurrency = currencyExchange.convertCurrency(Double.valueOf(awsInvoice.getAmount()), awsInvoice.getUnit(), "EUR");
+            Double convertedCurrency = currencyExchange.convertCurrency(Double.valueOf(awsInvoice.getAmount()), awsInvoice.getUnit(), currency);
             awsInvoice.setAmount(String.valueOf(convertedCurrency));
-            awsInvoice.setUnit("EUR");
+            awsInvoice.setUnit(currency);
         });
         return awsInvoiceEntries;
+    }
+
+    private void addTaxMetricToEntries(Map<String, MetricValue> awsInvoiceEntries) {
+        MetricValue taxMetric = new MetricValue();
+        taxMetric.setAmount(Double.parseDouble(calculateTotalMetric(awsInvoiceEntries.values()).getAmount()) * TAX_PERCENTACE + "");
+        taxMetric.setUnit("USD");
+        awsInvoiceEntries.put("TAX", taxMetric);
     }
 
 }

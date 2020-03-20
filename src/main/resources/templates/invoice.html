@@ -155,7 +155,7 @@
                 AWS Hosting
             </td>
 
-            <td th:text="${item.value.amount + ' ' + item.value.unit}">
+            <td th:text="${#numbers.formatDecimal(item.value.amount, 0, 2) + ' ' + item.value.unit}">
                 $300.00
             </td>
         </tr>
@@ -164,7 +164,7 @@
             <td></td>
 
             <td th:inline="text">
-                Total: [[${invoiceTotal.amount + ' ' + invoiceTotal.unit}]]
+                Total: [[${#numbers.formatDecimal(invoiceTotal.amount, 0, 2) + ' ' + invoiceTotal.unit}]]
             </td>
         </tr>
     </table>
