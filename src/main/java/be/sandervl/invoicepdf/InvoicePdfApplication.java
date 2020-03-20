@@ -14,9 +14,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.*;
@@ -41,12 +44,10 @@ import java.util.function.BinaryOperator;
 import java.util.stream.Collectors;
 
 @SpringBootApplication
-public class InvoicePdfApplication {
-
+public class InvoicePdfApplication extends SpringBootServletInitializer {
     public static void main(String[] args) {
         SpringApplication.run(InvoicePdfApplication.class, args);
     }
-
 }
 
 @Component
@@ -94,48 +95,46 @@ class AwsConfiguration {
     }
 }
 
-@Controller
-class InvoiceController {
-    public static final double TAX_PERCENTACE = 0.21;
+@Profile("lambda")
+@Slf4j
+@Component
+@RequiredArgsConstructor
+class LambaExcecution implements
+        ApplicationListener<ContextRefreshedEvent> {
     private final AwsInvoiceService awsInvoiceService;
     private final CurrencyExchange currencyExchange;
     private final PdfCreator pdfCreator;
     private final EmailService emailService;
 
-    InvoiceController(AwsInvoiceService awsInvoiceService, CurrencyExchange currencyExchange, PdfCreator pdfCreator, EmailService emailService) {
-        this.awsInvoiceService = awsInvoiceService;
-        this.currencyExchange = currencyExchange;
-        this.pdfCreator = pdfCreator;
-        this.emailService = emailService;
-    }
+    @SneakyThrows
+    @Override
+    public void onApplicationEvent(ContextRefreshedEvent contextRefreshedEvent) {
+        LOG.debug("Started application {}", contextRefreshedEvent);
+        AwsInvoiceService.Invoice invoice = currencyExchange.adaptInvoiceForCurrency(awsInvoiceService.getInvoice(), "EUR");
 
-    @GetMapping(path = "/invoice", produces = MediaType.TEXT_HTML_VALUE)
-    public String getInvoice(ModelMap modelMap) {
-        setInvoiceDataOnModel(modelMap);
-        return "invoice";
-    }
-
-    @GetMapping(path = "/invoicePdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    public ResponseEntity<InputStreamResource> getInvoicePdf(ModelMap modelMap) throws IOException, DocumentException {
-        setInvoiceDataOnModel(modelMap);
-        File pdf = pdfCreator.createPdf(modelMap);
-        InputStreamResource inputStreamResource = new InputStreamResource(new FileInputStream(pdf));
-        return ResponseEntity.ok(inputStreamResource);
-    }
-
-    @GetMapping(path = "/invoiceMail", produces = MediaType.APPLICATION_PDF_VALUE)
-    public ResponseEntity<String> getInvoiceByMail(ModelMap modelMap) throws IOException, DocumentException {
-        setInvoiceDataOnModel(modelMap);
+        LOG.debug("Created invoice {}", invoice);
+        ModelMap modelMap = new ModelMap();
+        InvoiceController.setInvoiceDataOnModel(modelMap, invoice);
         File pdf = pdfCreator.createPdf(modelMap);
         emailService.sendMessageWithAttachment("lierserulez@hotmail.com", "invoice ready", "invoice can be found in attachment", pdf.getAbsolutePath());
-        return ResponseEntity.ok("OK");
-    }
 
-    private void setInvoiceDataOnModel(ModelMap modelMap) {
-        Map<String, MetricValue> awsInvoice = getAwsCostsForCurrency("EUR");
-        MetricValue totalInvoice = calculateTotalMetric(awsInvoice.values());
-        modelMap.addAttribute("invoiceItems", awsInvoice);
-        modelMap.addAttribute("invoiceTotal", totalInvoice);
+        LOG.debug("Ended invoice mailings");
+    }
+}
+
+@Controller
+@Profile("!lambda")
+@RequiredArgsConstructor
+class InvoiceController {
+
+    private final AwsInvoiceService awsInvoiceService;
+    private final CurrencyExchange currencyExchange;
+    private final PdfCreator pdfCreator;
+    private final EmailService emailService;
+
+    public static void setInvoiceDataOnModel(ModelMap modelMap, AwsInvoiceService.Invoice awsInvoice) {
+        modelMap.addAttribute("invoiceItems", awsInvoice.items);
+        modelMap.addAttribute("invoiceTotal", awsInvoice.getTotal());
         modelMap.addAttribute("invoicePeriod", DateRange.getLastMonthDateRange());
         modelMap.addAttribute("invoiceData", InvoiceData.builder()
                 .invoiceNumber(1)
@@ -147,34 +146,26 @@ class InvoiceController {
                 .build());
     }
 
-    private MetricValue calculateTotalMetric(Collection<MetricValue> items) {
-        MetricValue initialValue = new MetricValue();
-        initialValue.setAmount("0");
-        initialValue.setUnit("EUR");
-        return items.stream().reduce(initialValue, (a, b) -> {
-            MetricValue sum = new MetricValue();
-            sum.setAmount(String.valueOf(Double.parseDouble(a.getAmount()) + Double.parseDouble(b.getAmount())));
-            sum.setUnit(a.getUnit());
-            return sum;
-        });
+    @GetMapping(path = "/invoice", produces = MediaType.TEXT_HTML_VALUE)
+    public String getInvoice(ModelMap modelMap) {
+        setInvoiceDataOnModel(modelMap, currencyExchange.adaptInvoiceForCurrency(awsInvoiceService.getInvoice(), "EUR"));
+        return "invoice";
     }
 
-    private Map<String, MetricValue> getAwsCostsForCurrency(String currency) {
-        Map<String, MetricValue> awsInvoiceEntries = awsInvoiceService.getInvoice();
-        addTaxMetricToEntries(awsInvoiceEntries);
-        awsInvoiceEntries.values().forEach(awsInvoice -> {
-            Double convertedCurrency = currencyExchange.convertCurrency(Double.valueOf(awsInvoice.getAmount()), awsInvoice.getUnit(), currency);
-            awsInvoice.setAmount(String.valueOf(convertedCurrency));
-            awsInvoice.setUnit(currency);
-        });
-        return awsInvoiceEntries;
+    @GetMapping(path = "/invoicePdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<InputStreamResource> getInvoicePdf(ModelMap modelMap) throws IOException, DocumentException {
+        setInvoiceDataOnModel(modelMap, currencyExchange.adaptInvoiceForCurrency(awsInvoiceService.getInvoice(), "EUR"));
+        File pdf = pdfCreator.createPdf(modelMap);
+        InputStreamResource inputStreamResource = new InputStreamResource(new FileInputStream(pdf));
+        return ResponseEntity.ok(inputStreamResource);
     }
 
-    private void addTaxMetricToEntries(Map<String, MetricValue> awsInvoiceEntries) {
-        MetricValue taxMetric = new MetricValue();
-        taxMetric.setAmount(Double.parseDouble(calculateTotalMetric(awsInvoiceEntries.values()).getAmount()) * TAX_PERCENTACE + "");
-        taxMetric.setUnit("USD");
-        awsInvoiceEntries.put("TAX", taxMetric);
+    @GetMapping(path = "/invoiceMail", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<String> getInvoiceByMail(ModelMap modelMap) throws IOException, DocumentException {
+        setInvoiceDataOnModel(modelMap, currencyExchange.adaptInvoiceForCurrency(awsInvoiceService.getInvoice(), "EUR"));
+        File pdf = pdfCreator.createPdf(modelMap);
+        emailService.sendMessageWithAttachment("lierserulez@hotmail.com", "invoice ready", "invoice can be found in attachment", pdf.getAbsolutePath());
+        return ResponseEntity.ok("OK");
     }
 
 }
@@ -237,6 +228,15 @@ class CurrencyExchange {
         return Math.round(convertedValue * 100.0) / 100.0;
     }
 
+    AwsInvoiceService.Invoice adaptInvoiceForCurrency(AwsInvoiceService.Invoice awsInvoiceEntries, String currency) {
+        awsInvoiceEntries.items.values().forEach(awsInvoice -> {
+            Double convertedCurrency = convertCurrency(Double.valueOf(awsInvoice.getAmount()), awsInvoice.getUnit(), currency);
+            awsInvoice.setAmount(String.valueOf(convertedCurrency));
+            awsInvoice.setUnit(currency);
+        });
+        return awsInvoiceEntries;
+    }
+
     @SneakyThrows
     private Double getConversionRate(String fromCurrency, String toCurrency) {
         ResponseEntity<String> restResponse = restTemplate.exchange("https://api.exchangeratesapi.io/latest?base=" + fromCurrency, HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), String.class);
@@ -246,25 +246,39 @@ class CurrencyExchange {
                 .map(JsonNode::asDouble)
                 .orElseThrow();
     }
+
 }
 
 @Service
 @Slf4j
 class AwsInvoiceService {
+
+    public static final double TAX_PERCENTACE = 0.21;
+
     private final AWSCostExplorer costExplorer;
 
     AwsInvoiceService(AWSCostExplorer costExplorer) {
         this.costExplorer = costExplorer;
     }
 
-    Map<String, MetricValue> getInvoice() {
+    Invoice getInvoice() {
         GetCostAndUsageRequest request = buildCostAndUsageRequest("kranzenzo");
         GetCostAndUsageResult costAndUsage = costExplorer.getCostAndUsage(request);
         LOG.debug("Got result {}", costAndUsage);
-        return costAndUsage.getResultsByTime().stream()
+        Map<String, MetricValue> items = costAndUsage.getResultsByTime().stream()
                 .map(this::getMetricValuePerService)
                 .flatMap(e -> e.entrySet().stream())
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        Invoice invoice = new Invoice(items);
+        addTaxMetricToEntries(invoice);
+        return invoice;
+    }
+
+    private void addTaxMetricToEntries(Invoice invoice) {
+        MetricValue taxMetric = new MetricValue();
+        taxMetric.setAmount(Double.parseDouble(invoice.getTotal().getAmount()) * TAX_PERCENTACE + "");
+        taxMetric.setUnit("USD");
+        invoice.items.put("TAX", taxMetric);
     }
 
     private Map<String, MetricValue> getMetricValuePerService(ResultByTime resultByTime) {
@@ -301,6 +315,22 @@ class AwsInvoiceService {
         return awsDatePeriod;
     }
 
+    @AllArgsConstructor
+    class Invoice {
+        Map<String, MetricValue> items;
+
+        MetricValue getTotal() {
+            MetricValue initialValue = new MetricValue();
+            initialValue.setAmount("0");
+            initialValue.setUnit("EUR");
+            return items.values().stream().reduce(initialValue, (a, b) -> {
+                MetricValue sum = new MetricValue();
+                sum.setAmount(String.valueOf(Double.parseDouble(a.getAmount()) + Double.parseDouble(b.getAmount())));
+                sum.setUnit(a.getUnit());
+                return sum;
+            });
+        }
+    }
 }
 
 @Data
