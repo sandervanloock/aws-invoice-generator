@@ -9,9 +9,7 @@ import com.amazonaws.services.costexplorer.model.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.text.DocumentException;
-import lombok.Builder;
-import lombok.Data;
-import lombok.SneakyThrows;
+import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -19,8 +17,12 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.*;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
 import org.springframework.stereotype.Service;
 import org.springframework.ui.ModelMap;
@@ -30,10 +32,13 @@ import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 import org.xhtmlrenderer.pdf.ITextRenderer;
 
+import javax.mail.internet.MimeMessage;
 import java.io.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.BinaryOperator;
+import java.util.stream.Collectors;
 
 @SpringBootApplication
 public class InvoicePdfApplication {
@@ -42,6 +47,29 @@ public class InvoicePdfApplication {
         SpringApplication.run(InvoicePdfApplication.class, args);
     }
 
+}
+
+@Component
+@RequiredArgsConstructor
+class EmailService {
+    private final JavaMailSender emailSender;
+
+    @SneakyThrows
+    public void sendMessageWithAttachment(String to, String subject, String text, String pathToAttachment) {
+        MimeMessage message = emailSender.createMimeMessage();
+
+        MimeMessageHelper helper = new MimeMessageHelper(message, true);
+
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(text);
+
+        FileSystemResource file
+                = new FileSystemResource(new File(pathToAttachment));
+        helper.addAttachment("Invoice", file, MediaType.APPLICATION_PDF_VALUE);
+
+        emailSender.send(message);
+    }
 }
 
 @Configuration
@@ -71,11 +99,13 @@ class InvoiceController {
     private final AwsInvoiceService awsInvoiceService;
     private final CurrencyExchange currencyExchange;
     private final PdfCreator pdfCreator;
+    private final EmailService emailService;
 
-    InvoiceController(AwsInvoiceService awsInvoiceService, CurrencyExchange currencyExchange, PdfCreator pdfCreator) {
+    InvoiceController(AwsInvoiceService awsInvoiceService, CurrencyExchange currencyExchange, PdfCreator pdfCreator, EmailService emailService) {
         this.awsInvoiceService = awsInvoiceService;
         this.currencyExchange = currencyExchange;
         this.pdfCreator = pdfCreator;
+        this.emailService = emailService;
     }
 
     @GetMapping(path = "/invoice", produces = MediaType.TEXT_HTML_VALUE)
@@ -92,12 +122,20 @@ class InvoiceController {
         return ResponseEntity.ok(inputStreamResource);
     }
 
+    @GetMapping(path = "/invoiceMail", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<String> getInvoiceByMail(ModelMap modelMap) throws IOException, DocumentException {
+        setInvoiceDataOnModel(modelMap);
+        File pdf = pdfCreator.createPdf(modelMap);
+        emailService.sendMessageWithAttachment("lierserulez@hotmail.com", "invoice ready", "invoice can be found in attachment", pdf.getAbsolutePath());
+        return ResponseEntity.ok("OK");
+    }
+
     private void setInvoiceDataOnModel(ModelMap modelMap) {
-        MetricValue awsInvoice = getTotalAwsCostMetric();
-        List<MetricValue> items = List.of(awsInvoice);
-        MetricValue totalInvoice = calculateTotalMetric(items);
-        modelMap.addAttribute("invoiceItems", items);
+        Map<String, MetricValue> awsInvoice = getTotalAwsCostMetric();
+        MetricValue totalInvoice = calculateTotalMetric(awsInvoice.values());
+        modelMap.addAttribute("invoiceItems", awsInvoice);
         modelMap.addAttribute("invoiceTotal", totalInvoice);
+        modelMap.addAttribute("invoicePeriod", DateRange.getLastMonthDateRange());
         modelMap.addAttribute("invoiceData", InvoiceData.builder()
                 .invoiceNumber(1)
                 .created(LocalDate.now())
@@ -108,7 +146,7 @@ class InvoiceController {
                 .build());
     }
 
-    private MetricValue calculateTotalMetric(List<MetricValue> items) {
+    private MetricValue calculateTotalMetric(Collection<MetricValue> items) {
         MetricValue initialValue = new MetricValue();
         initialValue.setAmount("0");
         initialValue.setUnit("EUR");
@@ -120,12 +158,14 @@ class InvoiceController {
         });
     }
 
-    private MetricValue getTotalAwsCostMetric() {
-        MetricValue awsInvoice = awsInvoiceService.getInvoice();
-        Double convertedCurrency = currencyExchange.convertCurrency(Double.valueOf(awsInvoice.getAmount()), awsInvoice.getUnit(), "EUR");
-        awsInvoice.setAmount(String.valueOf(convertedCurrency));
-        awsInvoice.setUnit("EUR");
-        return awsInvoice;
+    private Map<String, MetricValue> getTotalAwsCostMetric() {
+        Map<String, MetricValue> awsInvoiceEntries = awsInvoiceService.getInvoice();
+        awsInvoiceEntries.values().forEach(awsInvoice -> {
+            Double convertedCurrency = currencyExchange.convertCurrency(Double.valueOf(awsInvoice.getAmount()), awsInvoice.getUnit(), "EUR");
+            awsInvoice.setAmount(String.valueOf(convertedCurrency));
+            awsInvoice.setUnit("EUR");
+        });
+        return awsInvoiceEntries;
     }
 
 }
@@ -166,6 +206,10 @@ class PdfCreator {
 @Service
 class CurrencyExchange {
 
+    private static final Map<String, Double> conversionCurrencyCache = new HashMap<>();
+    private static final BinaryOperator<String> conversionCurrencyCacheKeyGenerator =
+            (from, to) -> String.format("FROM:%s-TO:%s", from, to);
+
     private RestTemplate restTemplate;
     private ObjectMapper objectMapper;
 
@@ -174,16 +218,24 @@ class CurrencyExchange {
         objectMapper = new ObjectMapper();
     }
 
-    @SneakyThrows
     Double convertCurrency(Double inputValue, String fromCurrency, String toCurrency) {
+        String cacheKey = conversionCurrencyCacheKeyGenerator.apply(fromCurrency, toCurrency);
+        Double conversionRate = conversionCurrencyCache.computeIfAbsent(cacheKey,
+                k -> getConversionRate(fromCurrency, toCurrency));
+        conversionCurrencyCache.put(cacheKey, conversionRate);
+
+        double convertedValue = inputValue / conversionRate;
+        return Math.round(convertedValue * 100.0) / 100.0;
+    }
+
+    @SneakyThrows
+    private Double getConversionRate(String fromCurrency, String toCurrency) {
         ResponseEntity<String> restResponse = restTemplate.exchange("https://api.exchangeratesapi.io/latest?base=" + fromCurrency, HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), String.class);
-        double dollarValue = Optional.ofNullable(objectMapper.readTree(restResponse.getBody()))
+        return Optional.ofNullable(objectMapper.readTree(restResponse.getBody()))
                 .flatMap(body -> Optional.ofNullable(body.get("rates")))
                 .flatMap(rates -> Optional.ofNullable(rates.get(toCurrency)))
                 .map(JsonNode::asDouble)
                 .orElseThrow();
-        double convertedValue = inputValue / dollarValue;
-        return Math.round(convertedValue * 100.0) / 100.0;
     }
 }
 
@@ -196,16 +248,20 @@ class AwsInvoiceService {
         this.costExplorer = costExplorer;
     }
 
-    MetricValue getInvoice() {
+    Map<String, MetricValue> getInvoice() {
         GetCostAndUsageRequest request = buildCostAndUsageRequest("kranzenzo");
         GetCostAndUsageResult costAndUsage = costExplorer.getCostAndUsage(request);
         LOG.debug("Got result {}", costAndUsage);
-        return costAndUsage.getResultsByTime()
+        return costAndUsage.getResultsByTime().stream()
+                .map(this::getMetricValuePerService)
+                .flatMap(e -> e.entrySet().stream())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    private Map<String, MetricValue> getMetricValuePerService(ResultByTime resultByTime) {
+        return resultByTime.getGroups()
                 .stream()
-                .map(ResultByTime::getTotal)
-                .flatMap(e -> e.values().stream())
-                .findFirst()
-                .orElse(new MetricValue());
+                .collect(Collectors.toMap(e -> e.getKeys().get(0), e -> e.getMetrics().get("AmortizedCost")));
     }
 
     private GetCostAndUsageRequest buildCostAndUsageRequest(String applicationFilter) {
@@ -220,16 +276,35 @@ class AwsInvoiceService {
         DateInterval timePeriod = getTimePeriodForLastMonth();
         request.setTimePeriod(timePeriod);
         request.setMetrics(List.of("AmortizedCost"));
+        GroupDefinition serviceGroupDefinition = new GroupDefinition();
+        serviceGroupDefinition.setKey("SERVICE");
+        serviceGroupDefinition.setType("DIMENSION");
+        request.setGroupBy(List.of(serviceGroupDefinition));
         LOG.debug("AWS request issued {}", request);
         return request;
     }
 
     private DateInterval getTimePeriodForLastMonth() {
-        DateInterval timePeriod = new DateInterval();
+        DateRange dateRange = DateRange.getLastMonthDateRange();
+        DateInterval awsDatePeriod = new DateInterval();
+        awsDatePeriod.setStart(dateRange.getStart().format(DateTimeFormatter.ISO_DATE));
+        awsDatePeriod.setEnd(dateRange.getEnd().format(DateTimeFormatter.ISO_DATE));
+        return awsDatePeriod;
+    }
+
+}
+
+@Data
+@AllArgsConstructor
+class DateRange {
+    private LocalDate start, end;
+
+    public static DateRange getLastMonthDateRange() {
         LocalDate lastMonth = LocalDate.now().minusMonths(1);
         int numberOfDaysInLastMonth = lastMonth.getMonth().length(lastMonth.isLeapYear());
-        timePeriod.setStart(lastMonth.withDayOfMonth(1).format(DateTimeFormatter.ISO_DATE));
-        timePeriod.setEnd(lastMonth.withDayOfMonth(numberOfDaysInLastMonth).format(DateTimeFormatter.ISO_DATE));
-        return timePeriod;
+        LocalDate start = lastMonth.withDayOfMonth(1);
+        LocalDate end = lastMonth.withDayOfMonth(numberOfDaysInLastMonth);
+        return new DateRange(start, end);
     }
 }
+

@@ -111,6 +111,7 @@
 
                         <td th:inline="text">
                             Invoice: [[${invoiceData.invoiceNumber}]]<br/>
+                            Period: [[${invoicePeriod.start}]] - [[${invoicePeriod.end}]]<br/>
                             Created: [[${invoiceData.created}]]<br/>
                             Due: [[${invoiceData.dueDate}]]
                         </td>
@@ -150,11 +151,11 @@
         </tr>
 
         <tr class="item" th:classappend="${itemIter.last} ? last : ''" th:each="item,itemIter: ${invoiceItems}">
-            <td>
+            <td th:text="${item.key}">
                 AWS Hosting
             </td>
 
-            <td th:text="${item.amount + ' ' + item.unit}">
+            <td th:text="${item.value.amount + ' ' + item.value.unit}">
                 $300.00
             </td>
         </tr>
