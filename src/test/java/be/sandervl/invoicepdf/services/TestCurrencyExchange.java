@@ -1,6 +1,5 @@
-package be.sandervl.invoicepdf;
+package be.sandervl.invoicepdf.services;
 
-import be.sandervl.invoicepdf.services.CurrencyExchange;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Test;
 

@@ -24,10 +24,9 @@ public class EmailService {
 
         helper.setTo(to);
         helper.setSubject(subject);
-        helper.setText(text);
+        helper.setText(text, true);
 
-        FileSystemResource file
-                = new FileSystemResource(new File(pathToAttachment));
+        FileSystemResource file = new FileSystemResource(new File(pathToAttachment));
         helper.addAttachment("Invoice", file, MediaType.APPLICATION_PDF_VALUE);
 
         emailSender.send(message);

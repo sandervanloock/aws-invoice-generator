@@ -18,7 +18,7 @@ import java.util.Optional;
 import java.util.function.BinaryOperator;
 
 @Service
-public class CurrencyExchange {
+class CurrencyExchange {
 
     private static final Map<String, Double> conversionCurrencyCache = new HashMap<>();
     private static final BinaryOperator<String> conversionCurrencyCacheKeyGenerator =

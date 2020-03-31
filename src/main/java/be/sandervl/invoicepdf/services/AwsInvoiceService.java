@@ -2,12 +2,14 @@ package be.sandervl.invoicepdf.services;
 
 import be.sandervl.invoicepdf.data.DateRange;
 import be.sandervl.invoicepdf.data.Invoice;
+import be.sandervl.invoicepdf.data.InvoiceData;
 import com.amazonaws.services.costexplorer.AWSCostExplorer;
 import com.amazonaws.services.costexplorer.model.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
@@ -22,8 +24,18 @@ public class AwsInvoiceService {
     public static final double TAX_PERCENTACE = 0.21;
 
     private final AWSCostExplorer costExplorer;
+    private final CurrencyExchange currencyExchange;
 
     public Invoice getInvoice() {
+        InvoiceData invoiceData = InvoiceData.builder()
+                .invoiceNumber(1)
+                .created(LocalDate.now())
+                .dueDate(LocalDate.now().plusMonths(1))
+                .companyName("Kranzenzo")
+                .contactPerson("Annemie Rousseau")
+                .contactEmail("lierserulez@hotmail.com")
+                .build();
+
         GetCostAndUsageRequest request = buildCostAndUsageRequest("kranzenzo");
         GetCostAndUsageResult costAndUsage = costExplorer.getCostAndUsage(request);
         LOG.debug("Got result {}", costAndUsage);
@@ -31,9 +43,13 @@ public class AwsInvoiceService {
                 .map(this::getMetricValuePerService)
                 .flatMap(e -> e.entrySet().stream())
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-        Invoice invoice = new Invoice(items);
+        Invoice invoice = new Invoice(items, invoiceData);
         addTaxMetricToEntries(invoice);
         return invoice;
+    }
+
+    public Invoice getInvoice(String currency) {
+        return currencyExchange.adaptInvoiceForCurrency(getInvoice(), currency);
     }
 
     private void addTaxMetricToEntries(Invoice invoice) {

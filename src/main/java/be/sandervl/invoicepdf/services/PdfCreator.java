@@ -26,7 +26,7 @@ public class PdfCreator {
     }
 
     public File createPdf(Map<String, Object> data) throws IOException, DocumentException {
-        String htmlInvoice = templateEngine.process("invoice", new Context(Locale.getDefault(), data));
+        String htmlInvoice = templateEngine.process("pdf/invoice", new Context(Locale.getDefault(), data));
         ITextRenderer renderer = new ITextRenderer();
         renderer.setDocumentFromString(htmlInvoice);
         renderer.layout();

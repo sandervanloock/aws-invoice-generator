@@ -9,7 +9,8 @@ import java.util.Map;
 @AllArgsConstructor
 @Data
 public class Invoice {
-    Map<String, MetricValue> items;
+    private Map<String, MetricValue> items;
+    private InvoiceData invoiceData;
 
     public MetricValue getTotal() {
         MetricValue initialValue = new MetricValue();

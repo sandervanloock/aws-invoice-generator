@@ -1,11 +1,6 @@
 package be.sandervl.invoicepdf;
 
 import be.sandervl.invoicepdf.controllers.InvoiceController;
-import be.sandervl.invoicepdf.data.Invoice;
-import be.sandervl.invoicepdf.services.AwsInvoiceService;
-import be.sandervl.invoicepdf.services.CurrencyExchange;
-import be.sandervl.invoicepdf.services.EmailService;
-import be.sandervl.invoicepdf.services.PdfCreator;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -18,8 +13,6 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.ui.ModelMap;
 
-import java.io.File;
-
 @SpringBootApplication
 public class InvoicePdfApplication extends SpringBootServletInitializer {
     public static void main(String[] args) {
@@ -31,25 +24,16 @@ public class InvoicePdfApplication extends SpringBootServletInitializer {
 @Slf4j
 @Component
 @RequiredArgsConstructor
-class LambaExcecution implements
-        ApplicationListener<ContextRefreshedEvent> {
-    private final AwsInvoiceService awsInvoiceService;
-    private final CurrencyExchange currencyExchange;
-    private final PdfCreator pdfCreator;
-    private final EmailService emailService;
+class LambaExcecution implements ApplicationListener<ContextRefreshedEvent> {
+
+    private final InvoiceController invoiceController;
 
     @SneakyThrows
     @Override
     public void onApplicationEvent(ContextRefreshedEvent contextRefreshedEvent) {
-        LOG.debug("Started application {}", contextRefreshedEvent);
-        Invoice invoice = currencyExchange.adaptInvoiceForCurrency(awsInvoiceService.getInvoice(), "EUR");
-
-        LOG.debug("Created invoice {}", invoice);
         ModelMap modelMap = new ModelMap();
-        InvoiceController.setInvoiceDataOnModel(modelMap, invoice);
-        File pdf = pdfCreator.createPdf(modelMap);
-        emailService.sendMessageWithAttachment("lierserulez@hotmail.com", "invoice ready", "invoice can be found in attachment", pdf.getAbsolutePath());
-
+        LOG.debug("Started application {}", contextRefreshedEvent);
+        invoiceController.getInvoiceByMail(modelMap);
         LOG.debug("Ended invoice mailings");
     }
 }
