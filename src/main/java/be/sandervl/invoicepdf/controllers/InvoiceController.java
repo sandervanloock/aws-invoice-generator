@@ -10,7 +10,6 @@ import com.itextpdf.text.DocumentException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
-import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -24,7 +23,6 @@ import java.io.IOException;
 import java.util.Locale;
 
 @Controller
-@Profile("!lambda")
 @RequiredArgsConstructor
 @Slf4j
 public class InvoiceController {
@@ -43,9 +41,10 @@ public class InvoiceController {
     }
 
     @GetMapping(path = "/invoice", produces = MediaType.TEXT_HTML_VALUE)
-    public String getInvoice(ModelMap modelMap) {
-        setInvoiceDataOnModel(modelMap, awsInvoiceService.getInvoice("EUR"));
-        return "invoice";
+    public String getInvoice(DateRange range, ModelMap modelMap) {
+        Invoice invoice = awsInvoiceService.getInvoice("EUR", range != null ? range : DateRange.getLastMonthDateRange());
+        setInvoiceDataOnModel(modelMap, invoice);
+        return "pdf/invoice";
     }
 
     @GetMapping(path = "/invoicePdf", produces = MediaType.APPLICATION_PDF_VALUE)
