@@ -10,6 +10,7 @@ import java.util.Map;
 @Data
 public class Invoice {
     private Map<String, MetricValue> items;
+    private DateRange dateRange;
     private InvoiceData invoiceData;
 
     public MetricValue getTotal() {

@@ -14,6 +14,7 @@ import java.io.File;
 @Component
 @RequiredArgsConstructor
 public class EmailService {
+    public static final String MAIL_ORIGINATOR = "noreply@sandervl.be";
     private final JavaMailSender emailSender;
 
     @SneakyThrows
@@ -25,6 +26,7 @@ public class EmailService {
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(text, true);
+        helper.setFrom(MAIL_ORIGINATOR);
 
         FileSystemResource file = new FileSystemResource(new File(pathToAttachment));
         helper.addAttachment("Invoice", file, MediaType.APPLICATION_PDF_VALUE);

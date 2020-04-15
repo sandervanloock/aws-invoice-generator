@@ -36,13 +36,13 @@ public class InvoiceController {
     public static void setInvoiceDataOnModel(ModelMap modelMap, Invoice awsInvoice) {
         modelMap.addAttribute("invoiceItems", awsInvoice.getItems());
         modelMap.addAttribute("invoiceTotal", awsInvoice.getTotal());
-        modelMap.addAttribute("invoicePeriod", DateRange.getLastMonthDateRange());
+        modelMap.addAttribute("invoicePeriod", awsInvoice.getDateRange());
         modelMap.addAttribute("invoiceData", awsInvoice.getInvoiceData());
     }
 
     @GetMapping(path = "/invoice", produces = MediaType.TEXT_HTML_VALUE)
     public String getInvoice(DateRange range, ModelMap modelMap) {
-        Invoice invoice = awsInvoiceService.getInvoice("EUR", range != null ? range : DateRange.getLastMonthDateRange());
+        Invoice invoice = awsInvoiceService.getInvoice("EUR", range);
         setInvoiceDataOnModel(modelMap, invoice);
         return "pdf/invoice";
     }

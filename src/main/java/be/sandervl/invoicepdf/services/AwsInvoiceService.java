@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
@@ -37,14 +36,6 @@ public class AwsInvoiceService {
     }
 
     private Invoice getInvoice(DateRange dateRange) {
-        InvoiceData invoiceData = InvoiceData.builder()
-                .invoiceNumber(1)
-                .created(LocalDate.now())
-                .dueDate(LocalDate.now().plusMonths(1))
-                .companyName("Kranzenzo")
-                .contactPerson("Annemie Rousseau")
-                .contactEmail("lierserulez@hotmail.com")
-                .build();
         DateInterval awsDatePeriod = new DateInterval();
         awsDatePeriod.setStart(dateRange.getStart().format(DateTimeFormatter.ISO_DATE));
         awsDatePeriod.setEnd(dateRange.getEnd().format(DateTimeFormatter.ISO_DATE));
@@ -56,7 +47,7 @@ public class AwsInvoiceService {
                 .map(this::getMetricValuePerService)
                 .flatMap(e -> e.entrySet().stream())
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, mergeMetricValue()));
-        Invoice invoice = new Invoice(items, invoiceData);
+        Invoice invoice = new Invoice(items, dateRange, InvoiceData.getDefaultInvoiceData());
         addTaxMetricToEntries(invoice);
         return invoice;
     }

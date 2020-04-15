@@ -14,4 +14,15 @@ public class InvoiceData {
     private String companyName;
     private String contactPerson;
     private String contactEmail;
+
+    public static InvoiceData getDefaultInvoiceData() {
+        return InvoiceData.builder()
+                .invoiceNumber(LocalDate.now().hashCode())
+                .created(LocalDate.now())
+                .dueDate(LocalDate.now().plusMonths(1))
+                .companyName("Kranzenzo")
+                .contactPerson("Annemie Rousseau")
+                .contactEmail("lierserulez@hotmail.com")
+                .build();
+    }
 }
