@@ -18,7 +18,7 @@ public class EmailService {
     private final JavaMailSender emailSender;
 
     @SneakyThrows
-    public void sendMessageWithAttachment(String to, String subject, String text, String pathToAttachment) {
+    public void sendMessageWithAttachment(String to, String subject, String text, String pathToAttachment, String attachmentName) {
         MimeMessage message = emailSender.createMimeMessage();
 
         MimeMessageHelper helper = new MimeMessageHelper(message, true);
@@ -29,7 +29,7 @@ public class EmailService {
         helper.setFrom(MAIL_ORIGINATOR);
 
         FileSystemResource file = new FileSystemResource(new File(pathToAttachment));
-        helper.addAttachment("Invoice", file, MediaType.APPLICATION_PDF_VALUE);
+        helper.addAttachment(attachmentName, file, MediaType.APPLICATION_PDF_VALUE);
 
         emailSender.send(message);
     }

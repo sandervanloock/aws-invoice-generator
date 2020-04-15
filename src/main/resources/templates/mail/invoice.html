@@ -1,21 +1,22 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <title th:text="#{email.title}">Invoice</title>
+    <title th:text="#{email.title(${invoiceData.number})}">Invoice</title>
     <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/>
     <link rel="shortcut icon" th:href="@{|${baseUrl}/favicon.ico|}"/>
 </head>
 <body>
-<p th:text="#{email.greeting(${invoiceData.companyName})}">
+<p th:utext="#{email.greeting(${invoiceData.companyName})}">
     Dear
 </p>
-<p th:text="#{email.paragraph}">
+<p th:utext="#{email.paragraph(${invoiceData.fileName})}">
     email paragraph
 </p>
 <p>
-    <em th:text="#{email.signature}">
-        email signature
-    </em>
+<div th:utext="#{email.closing}"></div>
+<em th:utext="#{email.signature}">
+    email signature
+</em>
 </p>
 </body>
 </html>

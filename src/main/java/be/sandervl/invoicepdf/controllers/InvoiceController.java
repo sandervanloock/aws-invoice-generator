@@ -63,14 +63,15 @@ public class InvoiceController {
 
         File pdf = pdfCreator.createPdf(modelMap);
 
-        Locale locale = Locale.ENGLISH;
-        String mailSubject = messageSource.getMessage("email.subject", null, locale);
+        Locale locale = Locale.forLanguageTag("nl");
+        String mailSubject = messageSource.getMessage("email.subject", new Object[]{invoice.getInvoiceData().getNumber()}, locale);
         String mailBody = thymeleafEmailComposer.getContent("mail/invoice", locale, modelMap);
         emailService.sendMessageWithAttachment(
                 invoice.getInvoiceData().getContactEmail(),
                 mailSubject,
                 mailBody,
-                pdf.getAbsolutePath());
+                pdf.getAbsolutePath(),
+                invoice.getInvoiceData().getFileName());
 
         LOG.debug("Ended invoice mailings");
         return ResponseEntity.ok("OK");
