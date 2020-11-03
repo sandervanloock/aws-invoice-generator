@@ -48,16 +48,16 @@ public class AwsInvoiceService {
                 .flatMap(e -> e.entrySet().stream())
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, mergeMetricValue()));
         Invoice invoice = new Invoice(items, dateRange, InvoiceData.getDefaultInvoiceData());
-        addTaxMetricToEntries(invoice);
+//        addTaxMetricToEntries(invoice);
         return invoice;
     }
 
-    private void addTaxMetricToEntries(Invoice invoice) {
-        MetricValue taxMetric = new MetricValue();
-        taxMetric.setAmount(Double.parseDouble(invoice.getTotal().getAmount()) * TAX_PERCENTACE + "");
-        taxMetric.setUnit("USD");
-        invoice.getItems().put("TAX", taxMetric);
-    }
+//    private void addTaxMetricToEntries(Invoice invoice) {
+//        MetricValue taxMetric = new MetricValue();
+//        taxMetric.setAmount(Double.parseDouble(invoice.getTotal().getAmount()) * TAX_PERCENTACE + "");
+//        taxMetric.setUnit("USD");
+//        invoice.getItems().put("TAX", taxMetric);
+//    }
 
     private Map<String, MetricValue> getMetricValuePerService(ResultByTime resultByTime) {
         return resultByTime.getGroups()
