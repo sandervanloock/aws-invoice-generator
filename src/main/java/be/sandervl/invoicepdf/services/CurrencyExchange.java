@@ -38,7 +38,7 @@ class CurrencyExchange {
                 k -> getConversionRate(fromCurrency, toCurrency));
         conversionCurrencyCache.put(cacheKey, conversionRate);
 
-        double convertedValue = inputValue / conversionRate;
+        double convertedValue = inputValue * conversionRate;
         return Math.round(convertedValue * 100.0) / 100.0;
     }
 
